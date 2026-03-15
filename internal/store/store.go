@@ -123,6 +123,40 @@ func UpdateStatus(cfg *config.Config, name, status string) error {
 	return w.Error()
 }
 
+// Delete removes the order matching name from orders.csv.
+func Delete(cfg *config.Config, name string) error {
+	orders, err := Load(cfg)
+	if err != nil {
+		return err
+	}
+
+	filtered := orders[:0]
+	found := false
+	for _, o := range orders {
+		if o.Name == name {
+			found = true
+			continue
+		}
+		filtered = append(filtered, o)
+	}
+	if !found {
+		return fmt.Errorf("order not found: %s", name)
+	}
+
+	f, err := os.Create(csvPath(cfg))
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	w := csv.NewWriter(f)
+	w.Write(csvHeaders)
+	for _, o := range filtered {
+		w.Write([]string{o.Name, o.Created, o.Deadline, o.Status})
+	}
+	w.Flush()
+	return w.Error()
+}
+
 // List prints a formatted table of all orders to stdout.
 func List(cfg *config.Config) error {
 	orders, err := Load(cfg)
