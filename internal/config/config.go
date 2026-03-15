@@ -14,6 +14,8 @@ const configFile = "config"
 // Config holds application settings.
 type Config struct {
 	OrdersPath string
+	RemoteName string // rclone remote name, e.g. "gdrive"
+	RemotePath string // base path on remote, e.g. "Orders"
 }
 
 // Path returns the absolute path to the config file.
@@ -50,8 +52,15 @@ func Load() (*Config, error) {
 		if len(parts) != 2 {
 			continue
 		}
-		if strings.TrimSpace(parts[0]) == "OrderPath" {
-			cfg.OrdersPath = strings.TrimSpace(parts[1])
+		key := strings.TrimSpace(parts[0])
+		val := strings.TrimSpace(parts[1])
+		switch key {
+		case "OrderPath":
+			cfg.OrdersPath = val
+		case "RemoteName":
+			cfg.RemoteName = val
+		case "RemotePath":
+			cfg.RemotePath = val
 		}
 	}
 
@@ -70,8 +79,17 @@ func Save(cfg *Config) error {
 	if err := os.MkdirAll(filepath.Dir(cfgPath), 0755); err != nil {
 		return fmt.Errorf("could not create config directory: %w", err)
 	}
-	content := fmt.Sprintf("OrderPath=%s\n", cfg.OrdersPath)
-	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("OrderPath=%s\n", cfg.OrdersPath))
+	if cfg.RemoteName != "" {
+		sb.WriteString(fmt.Sprintf("RemoteName=%s\n", cfg.RemoteName))
+	}
+	if cfg.RemotePath != "" {
+		sb.WriteString(fmt.Sprintf("RemotePath=%s\n", cfg.RemotePath))
+	}
+
+	if err := os.WriteFile(cfgPath, []byte(sb.String()), 0644); err != nil {
 		return fmt.Errorf("error writing config: %w", err)
 	}
 	return nil
@@ -84,7 +102,7 @@ func Setup() (*Config, error) {
 	defaultPath := filepath.Join(home, "Documents", "Orders")
 
 	fmt.Println("┌─────────────────────────────────────────┐")
-	fmt.Println("│          projectr — first run            │")
+	fmt.Println("│          projectr — first run           │")
 	fmt.Println("└─────────────────────────────────────────┘")
 	fmt.Printf("\nEnter path to your orders folder\n")
 	fmt.Printf("(press Enter to use: %s): ", defaultPath)
@@ -123,4 +141,46 @@ func Setup() (*Config, error) {
 	cfgPath, _ := Path()
 	fmt.Printf("✓ Config saved: %s\n\n", cfgPath)
 	return cfg, nil
+}
+
+// SetupUpload prompts for rclone remote settings and saves them.
+// Called automatically the first time "upload" is used without config.
+func SetupUpload(cfg *Config) error {
+	reader := bufio.NewReader(os.Stdin)
+
+	fmt.Println("┌─────────────────────────────────────────┐")
+	fmt.Println("│        projectr — rclone setup          │")
+	fmt.Println("└─────────────────────────────────────────┘")
+	fmt.Println("\nRun `rclone listremotes` to see your configured remotes.")
+
+	fmt.Printf("\nEnter rclone remote name (e.g. gdrive): ")
+	remoteName, err := reader.ReadString('\n')
+	if err != nil {
+		return fmt.Errorf("error reading input: %w", err)
+	}
+	remoteName = strings.TrimSpace(remoteName)
+	if remoteName == "" {
+		return fmt.Errorf("remote name cannot be empty")
+	}
+
+	fmt.Printf("Enter remote folder path (e.g. Orders): ")
+	remotePath, err := reader.ReadString('\n')
+	if err != nil {
+		return fmt.Errorf("error reading input: %w", err)
+	}
+	remotePath = strings.TrimSpace(remotePath)
+	if remotePath == "" {
+		return fmt.Errorf("remote path cannot be empty")
+	}
+
+	cfg.RemoteName = remoteName
+	cfg.RemotePath = remotePath
+
+	if err := Save(cfg); err != nil {
+		return err
+	}
+
+	fmt.Printf("\n✓ Upload config saved.\n")
+	fmt.Printf("  Remote: %s:%s\n\n", cfg.RemoteName, cfg.RemotePath)
+	return nil
 }

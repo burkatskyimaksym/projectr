@@ -9,6 +9,7 @@ import (
 	"github.com/burkatskyimaksym/projectr/internal/config"
 	"github.com/burkatskyimaksym/projectr/internal/project"
 	"github.com/burkatskyimaksym/projectr/internal/store"
+	"github.com/burkatskyimaksym/projectr/internal/upload"
 )
 
 func main() {
@@ -53,6 +54,24 @@ func main() {
 	case "import":
 		cfg := mustLoadConfig()
 		if err := project.Import(cfg); err != nil {
+			fatal("Error: %v", err)
+		}
+
+	case "upload":
+		if len(os.Args) < 3 {
+			fatal("Error: provide project name\n  projectr upload \"35 Logo redesign (maria22)\"")
+		}
+		cfg := mustLoadConfig()
+
+		// First-time rclone setup if not configured yet
+		if cfg.RemoteName == "" || cfg.RemotePath == "" {
+			if err := config.SetupUpload(cfg); err != nil {
+				fatal("Setup error: %v", err)
+			}
+		}
+
+		name := strings.Join(os.Args[2:], " ")
+		if err := upload.Upload(cfg, name); err != nil {
 			fatal("Error: %v", err)
 		}
 
@@ -116,6 +135,7 @@ func printUsage() {
 	fmt.Println("  projectr <project-name> [-d dd/mm/yyyy] [-s file1 file2 ...]")
 	fmt.Println("  projectr list")
 	fmt.Println("  projectr done <project-name>")
+	fmt.Println("  projectr upload <project-name>")
 	fmt.Println("  projectr import")
 	fmt.Println("")
 	fmt.Println("Examples:")
@@ -123,6 +143,8 @@ func printUsage() {
 	fmt.Println("  projectr \"35 Logo redesign (maria22)\" -d 25/03/2026 -s brief.pdf")
 	fmt.Println("  projectr list")
 	fmt.Println("  projectr done \"35 Logo redesign (maria22)\"")
+	fmt.Println("  projectr upload \"35 Logo redesign (maria22)\"")
+	fmt.Println("  projectr upload 35")
 	fmt.Println("  projectr import")
 	fmt.Println("")
 	fmt.Println("Flags:")
