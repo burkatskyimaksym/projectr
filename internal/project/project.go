@@ -15,11 +15,14 @@ import (
 var subDirs = []string{"src", "drafts", "final", "references"}
 
 // Create scaffolds a new project folder and registers it in orders.csv.
-func Create(cfg *config.Config, name, deadline string, sources []string) error {
+func Create(cfg *config.Config, name, deadline, priority string, sources []string) error {
 	if deadline != "" {
 		if _, err := time.Parse("02/01/2006", deadline); err != nil {
 			return fmt.Errorf("invalid deadline format, use dd/mm/yyyy (e.g. 25/03/2026)")
 		}
+	}
+	if priority != "" && priority != "high" && priority != "medium" && priority != "low" {
+		return fmt.Errorf("invalid priority %q — use: high, medium, or low", priority)
 	}
 
 	safeName := sanitize(name)
@@ -53,6 +56,7 @@ func Create(cfg *config.Config, name, deadline string, sources []string) error {
 		Name:     name,
 		Created:  time.Now().Format("02/01/2006"),
 		Deadline: deadline,
+		Priority: priority,
 		Status:   "in progress",
 	}); err != nil {
 		fmt.Printf("   ⚠ Could not update orders.csv: %v\n", err)

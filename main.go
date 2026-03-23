@@ -37,7 +37,21 @@ func main() {
 
 	case "list":
 		cfg := mustLoadConfig()
-		if err := store.List(cfg); err != nil {
+		if err := store.Migrate(cfg); err != nil {
+			fatal("Migration error: %v", err)
+		}
+		cmdList(cfg)
+
+	case "history":
+		if len(os.Args) < 3 {
+			fatal("Error: provide client nickname\n  projectr history Alexs1")
+		}
+		cfg := mustLoadConfig()
+		if err := store.Migrate(cfg); err != nil {
+			fatal("Migration error: %v", err)
+		}
+		client := strings.Join(os.Args[2:], " ")
+		if err := store.History(cfg, client); err != nil {
 			fatal("Error: %v", err)
 		}
 
@@ -54,6 +68,9 @@ func main() {
 
 	case "import":
 		cfg := mustLoadConfig()
+		if err := store.Migrate(cfg); err != nil {
+			fatal("Migration error: %v", err)
+		}
 		if err := project.Import(cfg); err != nil {
 			fatal("Error: %v", err)
 		}
@@ -73,14 +90,11 @@ func main() {
 			fatal("Error: provide project name\n  projectr upload \"35 Logo redesign (maria22)\"")
 		}
 		cfg := mustLoadConfig()
-
-		// First-time rclone setup if not configured yet
 		if cfg.RemoteName == "" || cfg.RemotePath == "" {
 			if err := config.SetupUpload(cfg); err != nil {
 				fatal("Setup error: %v", err)
 			}
 		}
-
 		name := strings.Join(os.Args[2:], " ")
 		if err := upload.Upload(cfg, name); err != nil {
 			fatal("Error: %v", err)
@@ -91,7 +105,27 @@ func main() {
 	}
 }
 
-// cmdCreate handles: projectr <name> [-d deadline] [-s file ...]
+// cmdList parses list flags and calls store.List.
+func cmdList(cfg *config.Config) {
+	fs := flag.NewFlagSet("list", flag.ExitOnError)
+	overdue := fs.Bool("overdue", false, "show only overdue orders")
+	done := fs.Bool("done", false, "show only completed orders")
+	month := fs.String("month", "", "filter by creation month, e.g. 03/2026")
+	client := fs.String("client", "", "filter by client nickname")
+	fs.Parse(os.Args[2:])
+
+	filters := store.ListFilters{
+		OnlyOverdue: *overdue,
+		OnlyDone:    *done,
+		Month:       *month,
+		Client:      *client,
+	}
+	if err := store.List(cfg, filters); err != nil {
+		fatal("Error: %v", err)
+	}
+}
+
+// cmdCreate handles: projectr <name> [-d deadline] [-p priority] [-s file ...]
 func cmdCreate() {
 	projectName := os.Args[1]
 	args := os.Args[2:]
@@ -113,10 +147,14 @@ func cmdCreate() {
 	fs := flag.NewFlagSet("projectr", flag.ExitOnError)
 	fs.Usage = printUsage
 	deadline := fs.String("d", "", "deadline in dd/mm/yyyy format")
+	priority := fs.String("p", "", "priority: high, medium, or low")
 	fs.Parse(args)
 
 	cfg := mustLoadConfig()
-	if err := project.Create(cfg, projectName, *deadline, sources); err != nil {
+	if err := store.Migrate(cfg); err != nil {
+		fatal("Migration error: %v", err)
+	}
+	if err := project.Create(cfg, projectName, *deadline, *priority, sources); err != nil {
 		fatal("Error: %v", err)
 	}
 }
@@ -143,26 +181,29 @@ func fatal(format string, args ...any) {
 
 func printUsage() {
 	fmt.Println("Usage:")
-	fmt.Println("  projectr <project-name> [-d dd/mm/yyyy] [-s file1 file2 ...]")
-	fmt.Println("  projectr list")
+	fmt.Println("  projectr <project-name> [-d dd/mm/yyyy] [-p high|medium|low] [-s file ...]")
+	fmt.Println("  projectr list [--overdue] [--done] [--month mm/yyyy] [--client nickname]")
+	fmt.Println("  projectr history <client>")
 	fmt.Println("  projectr done <project-name>")
 	fmt.Println("  projectr delete <project-name>")
 	fmt.Println("  projectr upload <project-name>")
 	fmt.Println("  projectr import")
 	fmt.Println("")
 	fmt.Println("Examples:")
-	fmt.Println("  projectr \"34 Branches and borders (Alexs1)\"")
-	fmt.Println("  projectr \"35 Logo redesign (maria22)\" -d 25/03/2026 -s brief.pdf")
+	fmt.Println("  projectr \"35 Logo redesign (maria22)\" -d 25/03/2026 -p high -s brief.pdf")
 	fmt.Println("  projectr list")
+	fmt.Println("  projectr list --overdue")
+	fmt.Println("  projectr list --done")
+	fmt.Println("  projectr list --month 03/2026")
+	fmt.Println("  projectr list --client Alexs1")
+	fmt.Println("  projectr history Alexs1")
 	fmt.Println("  projectr done \"35 Logo redesign (maria22)\"")
-	fmt.Println("  projectr delete \"35 Logo redesign (maria22)\"")
 	fmt.Println("  projectr delete 35")
-	fmt.Println("  projectr upload \"35 Logo redesign (maria22)\"")
 	fmt.Println("  projectr upload 35")
-	fmt.Println("  projectr import")
 	fmt.Println("")
 	fmt.Println("Flags:")
 	fmt.Println("  -d        deadline in dd/mm/yyyy format (optional)")
+	fmt.Println("  -p        priority: high, medium, or low (optional)")
 	fmt.Println("  -s        source files to copy into src/")
 	fmt.Println("  --config  print path to config file")
 	fmt.Println("  --reset   reset configuration")
