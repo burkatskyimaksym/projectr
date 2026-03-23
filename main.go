@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/burkatskyimaksym/projectr/internal/config"
@@ -11,6 +12,7 @@ import (
 	"github.com/burkatskyimaksym/projectr/internal/open"
 	"github.com/burkatskyimaksym/projectr/internal/project"
 	"github.com/burkatskyimaksym/projectr/internal/store"
+	"github.com/burkatskyimaksym/projectr/internal/todo"
 	"github.com/burkatskyimaksym/projectr/internal/upload"
 	"github.com/burkatskyimaksym/projectr/internal/watch"
 )
@@ -84,6 +86,9 @@ func main() {
 		if err := watch.Watch(cfg, name); err != nil {
 			fatal("Error: %v", err)
 		}
+
+	case "todo":
+		cmdTodo()
 
 	case "import":
 		cfg := mustLoadConfig()
@@ -226,6 +231,80 @@ func cmdCreate() {
 	}
 }
 
+// cmdTodo handles: projectr todo <project> <subcommand> [args]
+func cmdTodo() {
+	// projectr todo <project> <sub> [args...]
+	// os.Args: [projectr, todo, <project>, <sub>, ...]
+	if len(os.Args) < 4 {
+		fmt.Println("Usage:")
+		fmt.Println("  projectr todo <project> list")
+		fmt.Println("  projectr todo <project> add \"task text\"")
+		fmt.Println("  projectr todo <project> done <id>")
+		fmt.Println("  projectr todo <project> undone <id>")
+		fmt.Println("  projectr todo <project> remove <id>")
+		fmt.Println("  projectr todo <project> clear")
+		os.Exit(1)
+	}
+
+	cfg := mustLoadConfig()
+	projectName := os.Args[2]
+	sub := os.Args[3]
+
+	switch sub {
+	case "list":
+		if err := todo.List(cfg, projectName); err != nil {
+			fatal("Error: %v", err)
+		}
+
+	case "add":
+		if len(os.Args) < 5 {
+			fatal("Error: provide task text\n  projectr todo 35 add \"task\"")
+		}
+		text := strings.Join(os.Args[4:], " ")
+		if err := todo.Add(cfg, projectName, text); err != nil {
+			fatal("Error: %v", err)
+		}
+
+	case "done":
+		id := mustParseID(sub)
+		if err := todo.Done(cfg, projectName, id); err != nil {
+			fatal("Error: %v", err)
+		}
+
+	case "undone":
+		id := mustParseID(sub)
+		if err := todo.Undone(cfg, projectName, id); err != nil {
+			fatal("Error: %v", err)
+		}
+
+	case "remove":
+		id := mustParseID(sub)
+		if err := todo.Remove(cfg, projectName, id); err != nil {
+			fatal("Error: %v", err)
+		}
+
+	case "clear":
+		if err := todo.Clear(cfg, projectName); err != nil {
+			fatal("Error: %v", err)
+		}
+
+	default:
+		fatal("Unknown todo subcommand: %q\nUse: list, add, done, undone, remove, clear", sub)
+	}
+}
+
+// mustParseID reads the next CLI argument as an integer ID.
+func mustParseID(sub string) int {
+	if len(os.Args) < 5 {
+		fatal("Error: provide todo ID\n  projectr todo 35 %s <id>", sub)
+	}
+	id, err := strconv.Atoi(os.Args[4])
+	if err != nil {
+		fatal("Error: ID must be a number, got %q", os.Args[4])
+	}
+	return id
+}
+
 // mustLoadConfig loads config, running interactive setup on first run.
 func mustLoadConfig() *config.Config {
 	cfg, err := config.Load()
@@ -256,7 +335,7 @@ func printUsage() {
 	fmt.Println("  projectr watch <project-name>")
 	fmt.Println("  projectr upload <project-name>")
 	fmt.Println("  projectr delete <project-name>")
-	fmt.Println("  projectr import")
+	fmt.Println("  projectr todo <project> list|add|done|undone|remove|clear")
 	fmt.Println("")
 	fmt.Println("Examples:")
 	fmt.Println("  projectr \"35 Logo redesign (maria22)\" -d 25/03/2026 -p high -s brief.pdf")
